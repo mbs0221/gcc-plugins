@@ -12,6 +12,8 @@ PLUGIN_DIRS = \
   08_cfg_test \
   09_cfg_graphviz \
   10_warn_unused_result_cxx \
+  11_my_sfi_pass \
+  12_fork_pass \
   $(END)
 
 all:
