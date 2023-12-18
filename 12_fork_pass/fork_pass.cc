@@ -49,27 +49,39 @@ namespace
 
         void insert_vmpl_enter(gimple *stmt, basic_block bb)
         {
+            // Create a basic block for the if condition when stmt return 0
+            // pid_t pid = fork();
+            // if (pid == 0) {
+            //     vmpl_enter(1, 0);
+            //     if (vmpl_enter(1, 0) != 0) {
+            //         exit(EXIT_FAILURE);
+            //     }
+            // }
+            // Let's write the above code in GIMPLE first and then convert it to C code
+            // Please generate a gcc-plugin for this requirement for the fork() function call
+
+
+            // Create the if condition for stmt return 0
+            tree lhs = gimple_call_lhs(stmt);
+            tree zero = build_int_cst(integer_type_node, 0);
+            gcond *if_stmt = gimple_build_cond(EQ_EXPR, lhs, zero, NULL_TREE, NULL_TREE);
+
             // Create the vmpl_enter function call
             tree vmpl_enter_fn = build_fn_decl("vmpl_enter", build_function_type(integer_type_node, tree_cons(NULL_TREE, integer_type_node, tree_cons(NULL_TREE, ptr_type_node, NULL_TREE))));
             tree vmpl_enter_arg1 = build_int_cst(integer_type_node, 1);
             tree vmpl_enter_arg2 = build_int_cst(ptr_type_node, 0);
             gcall *vmpl_enter_call = gimple_build_call(vmpl_enter_fn, 2, vmpl_enter_arg1, vmpl_enter_arg2);
 
+            // Create the condition to check if vmpl_enter returns 0
+            tree lhs_vmpl = gimple_call_lhs(vmpl_enter_call);
+            gcond *if_stmt_vmpl = gimple_build_cond(NE_EXPR, lhs_vmpl, zero, NULL_TREE, NULL_TREE);
+
             // Create the exit(EXIT_FAILURE) call
             tree exit_fn = build_fn_decl("exit", build_function_type(void_type_node, tree_cons(NULL_TREE, integer_type_node, NULL_TREE)));
             tree exit_arg = build_int_cst(integer_type_node, EXIT_FAILURE);
             gcall *exit_call = gimple_build_call(exit_fn, 1, exit_arg);
 
-            // Create the condition to check if fork returns 0
-            tree lhs = gimple_call_lhs(stmt);
-            tree zero = build_int_cst(integer_type_node, 0);
-            gcond *if_stmt = gimple_build_cond(EQ_EXPR, lhs, zero, NULL_TREE, NULL_TREE);
-
-            // Create the condition to check if vmpl_enter returns 0
-            tree lhs_vmpl = gimple_call_lhs(vmpl_enter_call);
-            gcond *if_stmt_vmpl = gimple_build_cond(NE_EXPR, lhs_vmpl, zero, NULL_TREE, NULL_TREE);
-
-            // Create a basic block for the if condition
+            // Create a new basic block for the if condition
             edge e;
             edge_iterator ei;
             basic_block new_bb = create_empty_bb(bb);
@@ -82,16 +94,16 @@ namespace
 
             // Insert the if statement into the new basic block
             gimple_stmt_iterator gsi = gsi_after_labels(new_bb);
-            gsi_insert_before(&gsi, if_stmt, GSI_NEW_STMT);
+            gsi_insert_after(&gsi, if_stmt, GSI_NEW_STMT);
 
             // Insert the vmpl_enter call into the new basic block
-            gsi_insert_before(&gsi, vmpl_enter_call, GSI_NEW_STMT);
+            gsi_insert_after(&gsi, vmpl_enter_call, GSI_NEW_STMT);
 
             // Insert the if statement for vmpl_enter into the new basic block
-            gsi_insert_before(&gsi, if_stmt_vmpl, GSI_NEW_STMT);
+            gsi_insert_after(&gsi, if_stmt_vmpl, GSI_NEW_STMT);
 
             // Insert the exit call into the new basic block
-            gsi_insert_before(&gsi, exit_call, GSI_NEW_STMT);
+            gsi_insert_after(&gsi, exit_call, GSI_NEW_STMT);
         }
 
         // After each fork function call, insert a vmpl_enter function call when the return value of the fork is 0, then on vmpl_enter return non zero, call exit(EXIT_FAILURE) to exit pthread
@@ -120,6 +132,14 @@ namespace
                         }
                     }
                 }
+            }
+
+            FOR_EACH_BB_FN(bb, fun)
+            {
+                fprintf(stderr, "Basic Block %d\n", bb->index);
+                gimple_bb_info *bb_info = &bb->il.gimple;
+                print_gimple_seq(stderr, bb_info->seq, 0, static_cast<dump_flags_t>(0));
+                fprintf(stderr, "\n");
             }
 
             return 0;
